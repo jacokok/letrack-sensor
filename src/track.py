@@ -1,7 +1,10 @@
 import uasyncio
 from machine import Pin
-from utime import ticks_ms
+from utime import ticks_ms, time_ns, gmtime
 from event import Event
+from umqtt.robust import MQTTClient
+import json
+import config
 
 
 class BreakBeam:
@@ -25,13 +28,48 @@ class BreakBeam:
             self.time = ticks_ms()
             self.event = Event(self.trackId)
 
-    async def check(self):
+    async def check(self, mqtt: MQTTClient):
         if self.event.id != self.prev_event.id:
             self.prev_event = self.event
-            uasyncio.create_task(self.publish_event(self.event))
+            uasyncio.create_task(self.publish_event(self.event, mqtt))
 
-    async def publish_event(self, event: Event):
+    async def publish_event(self, event: Event, mqtt: MQTTClient):
+        current_ns = time_ns()
+        utc_string = utc_from_ns(current_ns)
         print("publish event to mqtt here", event)
+        event_json = json.dumps(
+            {
+                "Id": event.id.__str__(),
+                "TrackId": event.trackId,
+                "Timestamp": utc_string,
+            }
+        )
+        mqtt.publish("event", event_json)
         self.led.on()
         await uasyncio.sleep_ms(1000)
         self.led.off()
+
+
+def utc_from_ns(ns):
+    try:
+        seconds = ns // 1000000000
+        nanoseconds = ns % 1000000000
+        # Timezone offset fix
+        tm = gmtime(seconds + (-1 * config.TZ_OFFSET * 3600))
+
+        # Format the string, including fractional seconds
+        return "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}.{:06d}Z".format(
+            tm[0],
+            tm[1],
+            tm[2],
+            tm[3],
+            tm[4],
+            tm[5],
+            nanoseconds // 1000,  # microseconds
+        )
+    except OverflowError:
+        print("OverflowError: Nanoseconds value is too large.")
+        return None
+    except Exception as e:  # catch other exceptions
+        print(f"An error occurred: {e}")
+        return None

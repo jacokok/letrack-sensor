@@ -5,7 +5,7 @@
         "reportMissingModuleSource": "none"
     },
     "python.analysis.typeshedPaths": [
-        ".venv/lib/site-packages"
+        ".venv/lib/site-packages",
     ],
     "cSpell.words": [
         "rshell",
